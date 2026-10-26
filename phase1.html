@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Media Verification - Phase 1</title>
+  <!-- Tailwind CSS from a CDN: styling with no build step -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+  <main class="max-w-2xl mx-auto px-4 py-6 sm:py-10">
+
+    <!-- Header + wallet button -->
+    <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+      <div>
+        <h1 class="text-2xl font-bold">Media Verification</h1>
+        <p class="text-sm text-slate-500">Anchor a file's fingerprint on Base Sepolia. Verify it any time.</p>
+      </div>
+      <button id="connectBtn" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 w-full sm:w-auto">
+        Connect MetaMask
+      </button>
+    </header>
+
+    <!-- Privacy + scope notice -->
+    <section class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm mb-3">
+      <strong>🔒 Your file never leaves your browser.</strong>
+      It is fingerprinted (SHA-256) on this device. Only the 32-byte fingerprint and the text you type go on-chain.
+    </section>
+    <section class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm mb-5">
+      <strong>What this proves:</strong> the file is byte-for-byte unchanged since it was stamped, and which wallet stamped it when.
+      It does <em>not</em> prove a real camera captured it - that is Phase 2 (C2PA camera signing).
+    </section>
+
+    <div id="configWarning" class="hidden rounded-lg border border-red-200 bg-red-50 p-3 text-sm mb-5">
+      ⚠️ No contract address set yet. Deploy <code>MediaRegistry.sol</code> (see REMIX.md) and paste its address into
+      <code>CONTRACT_ADDRESS</code> at the top of the script in this file.
+    </div>
+
+    <!-- Tabs -->
+    <nav class="flex gap-2 mb-4">
+      <button data-tab="stamp" class="tab flex-1 py-2 rounded-lg font-medium">1. Register / Stamp</button>
+      <button data-tab="verify" class="tab flex-1 py-2 rounded-lg font-medium">2. Verify</button>
+    </nav>
+
+    <!-- TAB 1: STAMP -->
+    <section id="panel-stamp" class="panel bg-white rounded-xl shadow p-4 sm:p-6 space-y-4">
+      <div id="drop-stamp" class="dropzone border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer hover:border-indigo-400">
+        <p class="font-medium">Drop a file here or tap to choose</p>
+        <p class="text-xs text-slate-500">Video, PDF, manuscript, image - any file</p>
+        <input type="file" class="hidden" />
+      </div>
+      <div id="hash-stamp" class="hashbox text-xs break-all font-mono text-slate-600"></div>
+
+      <label class="block text-sm font-medium">Title
+        <input id="title" class="mt-1 w-full border rounded-lg p-2" placeholder="e.g. Thembalami - trailer cut" />
+      </label>
+      <label class="block text-sm font-medium">Version
+        <input id="version" class="mt-1 w-full border rounded-lg p-2" placeholder="e.g. v1 / Final edit" />
+      </label>
+      <label class="block text-sm font-medium">Claim or metadata pointer
+        <input id="claim" class="mt-1 w-full border rounded-lg p-2" placeholder="e.g. © 2026 Your Name, all rights reserved  or  c2pa:..." />
+      </label>
+
+      <button id="stampBtn" class="w-full py-3 rounded-lg bg-indigo-600 text-white font-semibold disabled:opacity-40" disabled>
+        Stamp on Base Sepolia
+      </button>
+      <div id="stampStatus" class="text-sm break-all"></div>
+    </section>
+
+    <!-- TAB 2: VERIFY -->
+    <section id="panel-verify" class="panel hidden bg-white rounded-xl shadow p-4 sm:p-6 space-y-4">
+      <p class="text-sm text-slate-500">No wallet needed. Drop the file you want to check.</p>
+      <div id="drop-verify" class="dropzone border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer hover:border-indigo-400">
+        <p class="font-medium">Drop a file here or tap to choose</p>
+        <p class="text-xs text-slate-500">It is hashed locally and looked up on-chain</p>
+        <input type="file" class="hidden" />
+      </div>
+      <div id="hash-verify" class="hashbox text-xs break-all font-mono text-slate-600"></div>
+      <div id="verifyResult"></div>
+    </section>
+
+    <footer class="text-xs text-slate-400 mt-6 text-center">
+      Phase 1 proof-of-concept · Base Sepolia testnet · Evidence only, not legal advice or copyright registration.
+    </footer>
+  </main>
+
+  <script type="module">
+    // ethers v6 loaded straight from a CDN as an ES module (no npm, no build step).
+    import { ethers } from "https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.min.js";
+
+    // =====================================================================
+    // 👉 PASTE YOUR DEPLOYED CONTRACT ADDRESS HERE after deploying in Remix.
+    //    While it is the zero address below, Stamp and Verify are disabled.
+    // =====================================================================
+    const CONTRACT_ADDRESS = "0x09644C52BCcF590d47c84227D02574dA331b45fe";
+
+    // Base Sepolia network details (used to switch/add the network in MetaMask).
+    const CHAIN_ID = 84532;
+    const CHAIN_ID_HEX = "0x" + CHAIN_ID.toString(16); // "0x14a34"
+    const RPC_URL = "https://sepolia.base.org";
+    const EXPLORER = "https://sepolia.basescan.org";
+
+    // The "ABI" tells ethers which contract functions exist and their inputs/outputs.
+    const ABI = [
+      "function stamp(bytes32 contentHash, string title, string version, string claim)",
+      "function isStamped(bytes32 contentHash) view returns (bool)",
+      "function getStamp(bytes32 contentHash) view returns (tuple(address stamper, uint256 timestamp, string title, string version, string claim))",
+      "event MediaStamped(bytes32 indexed contentHash, address indexed stamper, uint256 timestamp, string title, string version, string claim)"
+    ];
+
+    const configured = CONTRACT_ADDRESS !== ethers.ZeroAddress;
+    if (!configured) document.getElementById("configWarning").classList.remove("hidden");
+
+    // Read-only connection straight to the public RPC: lets Verify work without any wallet.
+    const readProvider = new ethers.JsonRpcProvider(RPC_URL, CHAIN_ID, { staticNetwork: true });
+    const readContract = new ethers.Contract(CONTRACT_ADDRESS, ABI, readProvider);
+
+    let signer = null;      // set after the wallet connects
+    let stampHash = null;   // fingerprint of the file chosen in the Stamp tab
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    // ---------- Tabs ----------
+    function showTab(name) {
+      document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("hidden", p.id !== "panel-" + name));
+      document.querySelectorAll(".tab").forEach((t) => {
+        const active = t.dataset.tab === name;
+        t.className = "tab flex-1 py-2 rounded-lg font-medium " + (active ? "bg-indigo-600 text-white" : "bg-white text-slate-700 border");
+      });
+    }
+    document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
+    showTab("stamp");
+
+    // ---------- Local SHA-256 hashing ----------
+    // Reads the file into memory and hashes it with the browser's built-in Web Crypto API.
+    // Nothing is uploaded. Very large videos (multiple GB) may exceed browser memory.
+    async function sha256File(file) {
+      const buffer = await file.arrayBuffer();                       // file bytes, in this tab only
+      const digest = await crypto.subtle.digest("SHA-256", buffer);  // 32-byte fingerprint
+      return ethers.hexlify(new Uint8Array(digest));                 // "0x" + 64 hex chars = bytes32
+    }
+
+    function fmtSize(n) {
+      const u = ["B", "KB", "MB", "GB"]; let i = 0;
+      while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+      return n.toFixed(i ? 1 : 0) + " " + u[i];
+    }
+
+    // Wires up a drop zone (drag-and-drop + tap-to-pick) and calls onHash(hash, file) when done.
+    function setupDropzone(zoneId, hashBoxId, onHash) {
+      const zone = $(zoneId), input = zone.querySelector("input"), box = $(hashBoxId);
+      const handle = async (file) => {
+        if (!file) return;
+        box.innerHTML = `<span class="inline-flex items-center gap-2 text-indigo-600">
+          <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"/><path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="4"/></svg>
+          Hashing ${esc(file.name)} (${fmtSize(file.size)}) locally… large videos can take a while</span>`;
+        try {
+          const t0 = performance.now();
+          const hash = await sha256File(file);
+          const secs = ((performance.now() - t0) / 1000).toFixed(1);
+          box.innerHTML = `<div class="text-slate-500 font-sans">${esc(file.name)} · ${fmtSize(file.size)} · hashed in ${secs}s</div>
+            <div class="mt-1 p-2 bg-slate-100 rounded">SHA-256: ${hash}</div>`;
+          onHash(hash, file);
+        } catch (e) {
+          box.innerHTML = `<span class="text-red-600 font-sans">Could not hash this file: ${esc(e.message || e)}. Very large files may be too big for the browser's memory.</span>`;
+        }
+      };
+      zone.addEventListener("click", () => input.click());
+      input.addEventListener("change", () => handle(input.files[0]));
+      zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("border-indigo-500", "bg-indigo-50"); });
+      zone.addEventListener("dragleave", () => zone.classList.remove("border-indigo-500", "bg-indigo-50"));
+      zone.addEventListener("drop", (e) => {
+        e.preventDefault(); zone.classList.remove("border-indigo-500", "bg-indigo-50");
+        handle(e.dataTransfer.files[0]);
+      });
+    }
+
+    // ---------- Wallet ----------
+    async function ensureBaseSepolia() {
+      try {
+        await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_ID_HEX }] });
+      } catch (err) {
+        if (err.code === 4902 || err?.data?.originalError?.code === 4902) {
+          // MetaMask doesn't know Base Sepolia yet: add it.
+          await window.ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [{
+              chainId: CHAIN_ID_HEX,
+              chainName: "Base Sepolia",
+              nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+              rpcUrls: [RPC_URL],
+              blockExplorerUrls: [EXPLORER]
+            }]
+          });
+        } else { throw err; }
+      }
+    }
+
+    $("connectBtn").addEventListener("click", async () => {
+      if (!window.ethereum) {
+        alert("MetaMask not found. On a phone, open this page inside the MetaMask app's browser.");
+        return;
+      }
+      try {
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+        await ensureBaseSepolia();
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        signer = await provider.getSigner();
+        const addr = await signer.getAddress();
+        $("connectBtn").textContent = addr.slice(0, 6) + "…" + addr.slice(-4) + " · Base Sepolia";
+        updateStampBtn();
+      } catch (e) {
+        alert("Wallet connection failed: " + (e.shortMessage || e.message || e));
+      }
+    });
+    // If the user switches account or network in MetaMask, reset so we reconnect cleanly.
+    window.ethereum?.on?.("accountsChanged", () => location.reload());
+    window.ethereum?.on?.("chainChanged", () => location.reload());
+
+    // ---------- Tab 1: Stamp ----------
+    function updateStampBtn() { $("stampBtn").disabled = !(configured && signer && stampHash); }
+    setupDropzone("drop-stamp", "hash-stamp", (hash) => { stampHash = hash; updateStampBtn(); });
+
+    $("stampBtn").addEventListener("click", async () => {
+      const status = $("stampStatus");
+      try {
+        // Check first (free, read-only) so we don't waste gas on a guaranteed revert.
+        if (await readContract.isStamped(stampHash)) {
+          status.innerHTML = `<span class="text-amber-700">This exact file is already stamped. Use the Verify tab to see the record.</span>`;
+          return;
+        }
+        $("stampBtn").disabled = true;
+        status.innerHTML = `<span class="text-indigo-600">Confirm the transaction in MetaMask…</span>`;
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+        const tx = await contract.stamp(stampHash, $("title").value.trim(), $("version").value.trim(), $("claim").value.trim());
+        const link = `<a class="text-indigo-600 underline" target="_blank" rel="noopener" href="${EXPLORER}/tx/${tx.hash}">View on Basescan</a>`;
+        status.innerHTML = `<span class="text-indigo-600">Sent. Waiting for the block…</span> ${link}`;
+        await tx.wait();
+        status.innerHTML = `<span class="text-emerald-700 font-medium">✅ Stamped on-chain.</span> ${link}`;
+      } catch (e) {
+        status.innerHTML = `<span class="text-red-600">Failed: ${esc(e.shortMessage || e.reason || e.message || e)}</span>`;
+      } finally { updateStampBtn(); }
+    });
+
+    // ---------- Tab 2: Verify (read-only, no wallet) ----------
+    setupDropzone("drop-verify", "hash-verify", async (hash) => {
+      const out = $("verifyResult");
+      if (!configured) { out.innerHTML = `<span class="text-red-600 text-sm">Set CONTRACT_ADDRESS first.</span>`; return; }
+      out.innerHTML = `<span class="text-indigo-600 text-sm">Checking Base Sepolia…</span>`;
+      try {
+        const found = await readContract.isStamped(hash);
+        if (!found) {
+          out.innerHTML = `<div class="rounded-lg bg-slate-200 text-slate-700 p-4">
+            <div class="font-semibold">⚪ Not found</div>
+            <div class="text-sm mt-1">No on-chain record for this exact file. Even a one-byte change gives a completely different fingerprint.</div></div>`;
+          return;
+        }
+        const s = await readContract.getStamp(hash);
+        const when = new Date(Number(s.timestamp) * 1000).toLocaleString(); // shown in your local time zone
+        out.innerHTML = `<div class="rounded-lg bg-emerald-600 text-white p-4 space-y-1">
+          <div class="font-semibold text-lg">✅ Verified - on-chain record found</div>
+          <div class="text-sm">This file is unchanged since it was stamped.</div>
+          <dl class="text-sm mt-2 grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 break-all">
+            <dt class="opacity-80">Stamper</dt><dd><a class="underline" target="_blank" rel="noopener" href="${EXPLORER}/address/${s.stamper}">${s.stamper}</a></dd>
+            <dt class="opacity-80">Stamped</dt><dd>${esc(when)}</dd>
+            <dt class="opacity-80">Title</dt><dd>${esc(s.title) || "-"}</dd>
+            <dt class="opacity-80">Version</dt><dd>${esc(s.version) || "-"}</dd>
+            <dt class="opacity-80">Claim</dt><dd>${esc(s.claim) || "-"}</dd>
+          </dl></div>`;
+      } catch (e) {
+        out.innerHTML = `<span class="text-red-600 text-sm">Lookup failed: ${esc(e.shortMessage || e.message || e)}</span>`;
+      }
+    });
+  </script>
+</body>
+</html>

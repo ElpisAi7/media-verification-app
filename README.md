@@ -1,19 +1,11 @@
-# Media Verification App (testnet PoC)
+# Media Verification (Base Sepolia testnet PoC) - Phase 1.5
 
-Single-page app for the Media Verification proof of concept. It hashes a file
-(SHA-256) **locally in your browser** — the file is never uploaded — and lets you:
+Live: https://elpisai7.github.io/media-verification-app/
 
-- **Stamp**: record the file's fingerprint, title, version and claim on-chain with your wallet (MetaMask).
-- **Verify**: drop in any copy of a file and check whether that exact fingerprint has been stamped. No wallet needed.
+- **Stamp:** sign in with a free Coinbase smart wallet (passkey, no MetaMask), or use MetaMask. Your file is fingerprinted (SHA-256) on your device and is never uploaded.
+- **Verify:** drop any copy to check it against the on-chain record. No wallet needed.
+- Contract: [`0x09644C52BCcF590d47c84227D02574dA331b45fe`](https://sepolia.basescan.org/address/0x09644C52BCcF590d47c84227D02574dA331b45fe) on Base Sepolia.
+- `config.js` holds runtime settings. Set `paymasterUrl` to a CDP Paymaster (Base Sepolia) endpoint or proxy to sponsor gas.
+- `phase1.html` is the original MetaMask-only Phase 1 page.
 
-**Live app:** https://elpisai7.github.io/media-verification-app/
-
-## Details
-
-- Network: **Base Sepolia testnet** (chain id 84532) — test ETH only, no real value.
-- MediaRegistry contract: [`0x09644C52BCcF590d47c84227D02574dA331b45fe`](https://sepolia.basescan.org/address/0x09644C52BCcF590d47c84227D02574dA331b45fe)
-- Source contract, tests and docs live in the main (private) repo: [ElpisAi7/media-verification](https://github.com/ElpisAi7/media-verification)
-
-⚠️ This is a **testnet proof of concept**, not production software and not legal advice.
-An on-chain stamp is evidence that a file existed at a point in time; it does not by itself prove
-authorship or that footage came from a real camera.
+This is a built copy of the `app/` folder in the private source repo. It proves a file is unchanged since it was stamped and which account stamped it. It does not prove who created it or that a camera captured it. Testnet only, evidence only, not legal advice.
