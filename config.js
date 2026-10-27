@@ -7,12 +7,11 @@ window.MV_CONFIG = {
   // The MediaRegistry contract already deployed on Base Sepolia (do not change unless you redeploy).
   contractAddress: "0x09644C52BCcF590d47c84227D02574dA331b45fe",
 
-  // Gas sponsorship (optional). Leave "" and users pay their own (tiny) testnet gas.
-  // To sponsor gas so users need NO ETH, paste your Coinbase Developer Platform (CDP)
-  // Paymaster endpoint for Base Sepolia here, e.g.
-  //   "https://api.developer.coinbase.com/rpc/v1/base-sepolia/<YOUR_CLIENT_API_KEY>"
-  // or, better, the URL of a small proxy that hides that key (see PHASE15.md).
-  // In CDP, allowlist ONLY the MediaRegistry contract + its stamp() function and set
-  // a per-user limit, because anything in this file is publicly visible.
-  paymasterUrl: ""
+  // Your Coinbase Developer Platform (CDP) Project ID, from https://portal.cdp.coinbase.com
+  // (project home / Settings). It looks like a UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  // It is NOT a secret and NOT an API key, so it is fine in this public file.
+  // While it is "", email sign-in is off (Verify and MetaMask still work).
+  // Gas is sponsored by CDP's built-in paymaster (useCdpPaymaster), so there is
+  // no paymaster URL to set. Also add this site's domain in CDP Portal → Embedded Wallets → Domains (see PHASE15.md).
+  projectId: ""
 };

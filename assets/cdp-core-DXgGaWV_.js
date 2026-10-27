@@ -1,0 +1,1 @@
+throw Error(`Could not resolve "x402-fetch" imported by "@coinbase/cdp-core". Is it installed?`);
