@@ -13,5 +13,5 @@ window.MV_CONFIG = {
   // While it is "", email sign-in is off (Verify and MetaMask still work).
   // Gas is sponsored by CDP's built-in paymaster (useCdpPaymaster), so there is
   // no paymaster URL to set. Also add this site's domain in CDP Portal → Embedded Wallets → Domains (see PHASE15.md).
-  projectId: "410d9dac-1cab-405b-b4d7-c0d96521c346"
+  projectId: "aa64e296-48cd-46e5-ba25-6840b9319996"
 };
